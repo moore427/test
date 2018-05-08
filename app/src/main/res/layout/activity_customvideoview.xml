@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<linearlayout android:layout_height="fill_parent" android:layout_width="fill_parent" android:orientation="vertical" xmlns:android="http://schemas.android.com/apk/res/android">
+    <textview android:layout_height="wrap_content" android:layout_width="fill_parent" android:text="@string/hello">
+        <videoview android:id="@+id/VideoView" android:layout_height="fill_parent" android:layout_width="fill_parent">
+        </videoview>
+    </textview></linearlayout>
