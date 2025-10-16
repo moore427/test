@@ -61,4 +61,4 @@ def get_finance_news():
         r = requests.get(url, headers=HEADERS, verify=False)
         articles = r.json().get("articles", [])
         if not articles:
-            return "❌ 無法取得
+            return "❌ 無法取得"
