@@ -4,9 +4,9 @@ import schedule
 import time
 
 # ===== 填入你的資料 =====
-BOT_TOKEN = "你的BotToken"       # 從 @BotFather 拿
-CHAT_ID = "你的ChatID"           # 你的 Telegram Chat ID
-NEWS_API_KEY = "你的NewsAPI金鑰"  # 如果要抓 NewsAPI 的台股新聞
+BOT_TOKEN = "fiancenews_bot"       # 從 @BotFather 拿
+CHAT_ID = "736743966"         # 你的 Telegram Chat ID
+NEWS_API_KEY = "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g" # 如果要抓 NewsAPI 的台股新聞
 
 # ===== 定義函式 =====
 def get_finance_news():
