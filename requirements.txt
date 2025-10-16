@@ -1,4 +1,4 @@
-feedparser
+feedparser==6.1.0
 python-telegram-bot
 flask
 googletrans
