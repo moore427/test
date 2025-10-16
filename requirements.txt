@@ -1,4 +1,6 @@
-feedparser
-python-telegram-bot[job-queue]
-googletrans
-requests
+feedparser==6.0.10
+requests==2.31.0
+googletrans==4.0.0rc1
+python-telegram-bot[job-queue,webhooks]==20.3
+aiohttp==3.8.5
+yarl==1.9.2
