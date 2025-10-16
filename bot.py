@@ -3,7 +3,7 @@ import requests
 
 # ===== 填入你的 Bot Token =====
 BOT_TOKEN = 
-8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g
+"8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"
 
 def get_updates():
     """抓取 Bot 的最新訊息更新"""
