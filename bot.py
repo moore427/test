@@ -8,7 +8,7 @@ from flask import Flask
 # ===== 填入你的資料 =====
 BOT_TOKEN="8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"       # 從 @BotFather 拿
 CHAT_ID = 1094674922   # 你的 Telegram Chat ID  
-NEWS_API_KEY = "你的NewsAPI金鑰"
+NEWS_API_KEY = "c8c11650703e417b9336b98c2e8083c0"
 
 # ===== DR 股票設定 =====
 DR_STOCKS = {
