@@ -2,7 +2,6 @@ import requests
 from telegram import Bot
 import os
 import json
-from googletrans import Translator
 
 # ---------- 配置 ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g")
@@ -10,7 +9,6 @@ CHAT_ID = int(os.getenv("CHAT_ID", 1094674922))
 CACHE_FILE = "sent_news.json"
 
 bot = Bot(token=BOT_TOKEN)
-translator = Translator()
 
 # ---------- 讀取已推播新聞 ----------
 def load_cache():
@@ -25,13 +23,13 @@ def save_cache(cache):
 
 # ---------- 抓取金十免費 JSON API ----------
 def fetch_news():
-    url = "https://cdn.jin10.com/datatool/market_calendar.json"  # 免費 API
+    url = "https://cdn.jin10.com/datatool/market_calendar.json"
     response = requests.get(url)
     news_list = []
 
     if response.status_code == 200:
         data = response.json()
-        for item in data[:20]:  # 取最新 20 則
+        for item in data[:20]:
             importance = item.get("importance", "")
             if importance.lower() in ["medium", "high"]:
                 title = item.get("title", "")
@@ -40,14 +38,6 @@ def fetch_news():
                 link = "https://rili.jin10.com"
                 news_list.append(f"[{category}] {time} {title}\n{link}")
     return news_list
-
-# ---------- 英文自動翻譯中文 ----------
-def translate_news(news_list):
-    translated = []
-    for news in news_list:
-        zh = translator.translate(news, src='en', dest='zh-cn').text
-        translated.append(zh)
-    return translated
 
 # ---------- 發送 Telegram ----------
 def send_news(news_list):
@@ -67,5 +57,4 @@ def send_news(news_list):
 if __name__ == "__main__":
     news_list = fetch_news()
     if news_list:
-        news_list_zh = translate_news(news_list)
-        send_news(news_list_zh)
+        send_news(news_list)
