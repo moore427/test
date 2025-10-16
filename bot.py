@@ -1,35 +1,93 @@
-
 import requests
+from datetime import datetime
+import schedule
+import threading
+import time
+from flask import Flask
 
-# ===== 填入你的 Bot Token =====
-BOT_TOKEN ="8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"
+# ===== 填入你的資料 =====
+BOT_TOKEN = "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"  # 從 @BotFather 拿
+CHAT_ID = 1094674922      # 你的 Telegram Chat ID
+NEWS_API_KEY = "你的NewsAPI金鑰"
 
-def get_updates():
-    """抓取 Bot 的最新訊息更新"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    r = requests.get(url)
-    data = r.json()
-    return data
+# ===== 股票設定 =====
+DR_STOCKS = {
+    "台積電 DR": "2330",
+    "鴻海 DR": "2317"
+}
 
-def main():
-    updates = get_updates()
-    if not updates.get("result"):
-        print("⚠️ 沒有收到訊息，請先在 Telegram 發送任意訊息給 Bot")
-        return
+# ===== 函式定義 =====
+def get_tw_stock_index():
+    try:
+        url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=^TWII"
+        data = requests.get(url).json()
+        quote = data["quoteResponse"]["result"][0]
+        price = quote["regularMarketPrice"]
+        change = quote["regularMarketChange"]
+        percent = quote["regularMarketChangePercent"]
+        return f"📈 台股加權指數: {price:.2f} ({change:+.2f}, {percent:+.2f}%)"
+    except:
+        return "❌ 無法取得台股加權指數"
 
-    print("✅ 已抓到最近訊息，以下是 Chat ID：\n")
-    for u in updates["result"]:
-        chat = u["message"]["chat"]
-        print(f"使用者/群組名稱: {chat.get('first_name', chat.get('title','未知'))}")
-        print(f"Chat ID: {chat['id']}")
-        print("-" * 30)
+def get_dr_stocks():
+    messages = []
+    for name, symbol in DR_STOCKS.items():
+        try:
+            url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}.TW"
+            data = requests.get(url).json()
+            quote = data["quoteResponse"]["result"][0]
+            price = quote["regularMarketPrice"]
+            change = quote["regularMarketChange"]
+            percent = quote["regularMarketChangePercent"]
+            messages.append(f"{name}: {price:.2f} ({change:+.2f}, {percent:+.2f}%)")
+        except:
+            messages.append(f"{name}: ❌ 無法取得資料")
+    return "\n".join(messages)
 
-    # 選擇第一個 Chat ID 發送測試訊息
-    test_chat_id = updates["result"][0]["message"]["chat"]["id"]
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {"chat_id": test_chat_id, "text": "✅ 測試訊息成功！"}
-    resp = requests.post(url, data=data)
-    print(f"\n發送測試訊息結果: {resp.json()}")
+def get_finance_news():
+    try:
+        url = f"https://newsapi.org/v2/top-headlines?country=tw&category=business&apiKey={NEWS_API_KEY}"
+        response = requests.get(url)
+        articles = response.json().get("articles", [])
+        headlines = [f"📰 {a['title']} ({a['source']['name']})" for a in articles[:5]]
+        return "\n".join(headlines)
+    except:
+        return "❌ 無法取得新聞"
+
+def send_to_telegram(msg):
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        data = {"chat_id": CHAT_ID, "text": msg}
+        requests.post(url, data=data)
+    except Exception as e:
+        print(f"發送 Telegram 訊息錯誤: {e}")
+
+def job():
+    index_msg = get_tw_stock_index()
+    dr_msg = get_dr_stocks()
+    news_msg = get_finance_news()
+    message = f"📅 今日台股摘要 ({datetime.now().strftime('%Y/%m/%d')})\n\n"
+    message += f"{index_msg}\n\n{dr_msg}\n\n最新財經新聞:\n{news_msg}"
+    send_to_telegram(message)
+    print(f"[{datetime.now()}] 已發送台股 + DR + 財經新聞摘要")
+
+# ===== 排程每天 8 點 =====
+def run_schedule():
+    schedule.every().minute.at(":01").do(job)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
+
+threading.Thread(target=run_schedule).start()
+
+# ===== Flask Web Server =====
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "Telegram Finance Bot is running!"
 
 if __name__ == "__main__":
-    main()
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
