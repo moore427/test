@@ -5,7 +5,7 @@ import threading
 import time
 from flask import Flask, request
 from telegram import Bot, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Dispatcher
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # ---------- 配置 ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g")
@@ -59,11 +59,16 @@ def send_news(news_list):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot is running ✅")
 
+# ---------- 建立 Application（新版 API） ----------
+application = ApplicationBuilder().token(BOT_TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+
 # ---------- Webhook 路由 ----------
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    app.application.update_queue.put(update)
+    # 使用 Application 處理更新
+    application.update_queue.put(update)
     return "OK"
 
 # ---------- /health 路由 ----------
@@ -82,11 +87,7 @@ def background_job():
             print("抓新聞出錯:", e)
         time.sleep(300)  # 每 5 分鐘抓一次
 
-# ---------- 啟動程式 ----------
+# ---------- 啟動 Flask Web Service ----------
 if __name__ == "__main__":
-    # 建立 Application（新版 API）
-    app.application = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.application.add_handler(CommandHandler("start", start))
     threading.Thread(target=background_job, daemon=True).start()
-    # 啟動 Flask Web Service
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
