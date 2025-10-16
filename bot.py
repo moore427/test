@@ -61,11 +61,4 @@ def get_finance_news():
         r = requests.get(url, headers=HEADERS, verify=False)
         articles = r.json().get("articles", [])
         if not articles:
-            return "❌ 無法取得新聞或新聞數量為0"
-        headlines = [f"📰 {a['title']} ({a['source']['name']})" for a in articles[:5]]
-        return "\n".join(headlines)
-    except Exception as e:
-        return f"❌ 無法取得新聞 ({e})"
-
-# ===== 熱門漲跌股 =====
-def get_top_stocks():
+            return "❌ 無法取得
