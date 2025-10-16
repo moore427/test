@@ -2,14 +2,14 @@ import os
 import json
 import feedparser
 from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, JobQueue
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from googletrans import Translator
 
 # ---------- 配置 ----------
-BOT_TOKEN = os.getenv("BOT_TOKEN", "你的BOT_TOKEN")
-CHAT_ID = int(os.getenv("CHAT_ID", 123456789))
+BOT_TOKEN = "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"
+CHAT_ID = 1094674922
 CACHE_FILE = "sent_news.json"
-RSS_URL = "https://www.investing.com/rss/news_25.rss"  # 全球經濟新聞RSS
+RSS_URL = "https://www.investing.com/rss/news_25.rss"
 
 translator = Translator()
 bot = Bot(token=BOT_TOKEN)
@@ -79,8 +79,8 @@ async def background_job(context: ContextTypes.DEFAULT_TYPE):
         send_news(news_list)
 
 # ---------- 設置 JobQueue ----------
-job_queue: JobQueue = application.job_queue
-job_queue.run_repeating(background_job, interval=300, first=10)  # 每5分鐘執行一次
+job_queue = application.job_queue
+job_queue.run_repeating(background_job, interval=300, first=10)
 
 # ---------- 啟動 BOT Webhook ----------
 if __name__ == "__main__":
