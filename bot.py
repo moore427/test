@@ -1,118 +1,93 @@
 import os
-import json
-import time
-import threading
-import feedparser
+import asyncio
 import requests
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from deep_translator import GoogleTranslator
+import feedparser
+from telegram import Update, Bot
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+)
+from datetime import datetime, timedelta, timezone
 
-# ---------- 配置 ----------
+# === 基本設定 ===
 BOT_TOKEN = "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"
 CHAT_ID = 1094674922
-CACHE_FILE = "sent_news.json"
 
-bot = Bot(token=BOT_TOKEN)
-app = Flask(__name__)
+# === 資料來源 ===
+RSS_URLS = [
+    "https://rss.cnn.com/rss/edition_business.rss",
+    "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "https://www.reutersagency.com/feed/?best-topics=markets",
+    "https://www.investing.com/rss/news_25.rss"
+]
 
-# ---------- 翻譯 ----------
-def translate_to_chinese(text):
-    try:
-        return GoogleTranslator(source="auto", target="zh-TW").translate(text)
-    except Exception:
-        return text
-
-# ---------- 快取 ----------
-def load_cache():
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
-            return set(json.load(f))
-    return set()
-
-def save_cache(cache):
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(cache), f, ensure_ascii=False)
-
-# ---------- 抓免費 RSS 財經新聞 ----------
-def fetch_news(limit=5):
-    feeds = [
-        "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^TWII&region=TW&lang=zh-Hant-TW",
-        "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-        "https://www.reuters.com/business/rss",
-    ]
-    news_list = []
-    for url in feeds:
+# === 取得新聞 ===
+def fetch_latest_news(limit=5):
+    news_items = []
+    for url in RSS_URLS:
         try:
             feed = feedparser.parse(url)
-            for entry in feed.entries[:limit]:
-                title = translate_to_chinese(entry.title)
+            for entry in feed.entries:
+                title = entry.title
                 link = entry.link
-                published = entry.get("published", "")
-                news_list.append(f"📰 {published}\n{title}\n{link}")
+                published = entry.get("published", "未知時間")
+                news_items.append((published, title, link))
         except Exception as e:
-            print("抓取 RSS 錯誤:", e)
-    return news_list
+            print(f"⚠️ 讀取 {url} 時出錯：{e}")
 
-# ---------- 傳送新聞 ----------
-def send_news(news_list):
-    cache = load_cache()
-    new_items = []
-    for news in news_list:
-        if news not in cache:
-            bot.send_message(chat_id=CHAT_ID, text=news)
-            cache.add(news)
-            new_items.append(news)
-    if new_items:
-        save_cache(cache)
+    # 依時間排序
+    news_items.sort(reverse=True, key=lambda x: x[0])
+    return news_items[:limit]
 
-# ---------- 指令 /start ----------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot 已啟動，將自動推播最新財經新聞。\n可用指令：/today 查看最新 5 則。")
-
-# ---------- 指令 /today ----------
+# === /today 指令 ===
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    news_list = fetch_news(limit=5)
-    if news_list:
-        await update.message.reply_text("📊 最新財經新聞：")
-        for news in news_list:
-            await update.message.reply_text(news)
-    else:
-        await update.message.reply_text("暫時沒有可用的新聞資料。")
+    news = fetch_latest_news()
+    if not news:
+        await update.message.reply_text("😿 目前無法取得最新新聞。")
+        return
 
-# ---------- 應用初始化 ----------
-application = ApplicationBuilder().token(BOT_TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("today", today))
+    msg = "📰 今日最新 5 筆市場消息：\n\n"
+    for pub, title, link in news:
+        msg += f"• {title}\n📅 {pub}\n🔗 {link}\n\n"
+    await update.message.reply_text(msg)
 
-# ---------- Webhook ----------
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    application.update_queue.put_nowait(update)
-    return "OK"
+# === 背景自動更新 ===
+async def background_job(context: ContextTypes.DEFAULT_TYPE):
+    bot = context.bot
+    news = fetch_latest_news()
+    if news:
+        msg = "⏰ 定時更新：最新市場消息\n\n"
+        for pub, title, link in news:
+            msg += f"• {title}\n📅 {pub}\n🔗 {link}\n\n"
+        await bot.send_message(chat_id=CHAT_ID, text=msg)
 
-@app.route("/")
-def index():
-    return "Bot is running."
+# === 啟動成功通知 ===
+async def send_startup_message():
+    bot = Bot(token=BOT_TOKEN)
+    await bot.send_message(chat_id=CHAT_ID, text="✅ Bot 已成功啟動並在 Render 運行中！")
 
-# ---------- 背景推播 ----------
-def background_job():
-    while True:
-        try:
-            news_list = fetch_news(limit=3)
-            if news_list:
-                send_news(news_list)
-        except Exception as e:
-            print("背景抓新聞錯誤:", e)
-        time.sleep(300)  # 每 5 分鐘
-
+# === 主程式 ===
 if __name__ == "__main__":
-    threading.Thread(target=background_job, daemon=True).start()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # 指令註冊
+    application.add_handler(CommandHandler("today", today))
+
+    # 背景任務（每 5 分鐘）
+    job_queue = application.job_queue
+    job_queue.run_repeating(background_job, interval=300, first=10)
+
+    # 啟動成功通知
+    asyncio.run(send_startup_message())
+
+    # 啟動 webhook (Render 用)
     application.run_webhook(
         listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
+        port=int(os.environ.get("PORT", 8080)),
         url_path=BOT_TOKEN,
-        webhook_url=f"https://test-81r2.onrender.com/{BOT_TOKEN}",
+        webhook_url=f"https://test-81r2.onrender.com/{BOT_TOKEN}"
     )
+
+    # 若在本機測試請改用以下：
+    # application.run_polling()
