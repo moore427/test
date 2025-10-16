@@ -69,3 +69,90 @@ def get_finance_news():
 
 # ===== 熱門漲跌股 =====
 def get_top_stocks():
+    try:
+        date_str = datetime.now().strftime("%Y%m%d")
+        url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={date_str}&type=ALL"
+        r = requests.get(url, headers=HEADERS, verify=False)
+        data = r.json()
+        top_gainers = []
+        top_losers = []
+
+        if "data9" in data:
+            for row in data["data9"][:5]:
+                top_gainers.append(f"{row[0]} {row[1]} ({row[2]}%)")
+        if "data10" in data:
+            for row in data["data10"][:5]:
+                top_losers.append(f"{row[0]} {row[1]} ({row[2]}%)")
+
+        msg = "📈 漲幅前5名:\n" + "\n".join(top_gainers) + "\n\n"
+        msg += "📉 跌幅前5名:\n" + "\n".join(top_losers)
+        return msg
+    except:
+        return "❌ 無法取得熱門股票排行"
+
+# ===== 融資融券變化 =====
+def get_margin_trading():
+    try:
+        date_str = datetime.now().strftime("%Y%m%d")
+        url = f"https://www.twse.com.tw/exchangeReport/MI_MARGN?response=json&date={date_str}&selectType=ALL"
+        r = requests.get(url, headers=HEADERS, verify=False)
+        data = r.json()
+        top_finance = []
+        top_short = []
+
+        if "data" in data:
+            for row in data["data"][:5]:
+                top_finance.append(f"{row[0]} {row[1]} 融資增減: {row[8]}")
+                top_short.append(f"{row[0]} {row[1]} 融券增減: {row[9]}")
+
+        msg = "💰 融資買進前5名:\n" + "\n".join(top_finance) + "\n\n"
+        msg += "📉 融券賣出前5名:\n" + "\n".join(top_short)
+        return msg
+    except:
+        return "❌ 無法取得融資餘額"
+
+# ===== 發送 Telegram 訊息 =====
+def send_to_telegram(msg):
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        data = {"chat_id": CHAT_ID, "text": msg}
+        r = requests.post(url, data=data)
+        print(r.json())
+    except Exception as e:
+        print(f"發送 Telegram 訊息錯誤: {e}")
+
+# ===== 每日推播任務 =====
+def job():
+    index_msg = get_tw_stock_index()
+    dr_msg = get_dr_stocks()
+    news_msg = get_finance_news()
+    top_stocks_msg = get_top_stocks()
+    margin_msg = get_margin_trading()
+
+    message = f"📅 今日台股摘要 ({datetime.now().strftime('%Y/%m/%d')})\n\n"
+    message += f"{index_msg}\n\n{dr_msg}\n\n最新財經新聞:\n{news_msg}\n\n"
+    message += f"{top_stocks_msg}\n\n{margin_msg}"
+
+    send_to_telegram(message)
+    print(f"[{datetime.now()}] 已發送完整台股摘要")
+
+# ===== 排程每天 8 點 =====
+def run_schedule():
+    schedule.every().day.at("08:00").do(job)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
+
+threading.Thread(target=run_schedule).start()
+
+# ===== Flask Web Server =====
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "Telegram Finance Bot is running!"
+
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
