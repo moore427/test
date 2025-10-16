@@ -68,4 +68,4 @@ def get_finance_news():
         return f"❌ 無法取得新聞 ({e})"
 
 # ===== 熱門漲跌股 =====
-def get_top_stocks():"
+def get_top_stocks():
