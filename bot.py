@@ -73,7 +73,7 @@ def job():
 
 # ===== 排程每天 8 點 =====
 def run_schedule():
-    schedule.every().day.at("08:00").do(job)
+    schedule.every().day.at(":01").do(job)
     while True:
         schedule.run_pending()
         time.sleep(30)
