@@ -4,7 +4,7 @@ import os
 import feedparser
 from flask import Flask, request
 from threading import Thread
-from googletrans import Translator  # pip install googletrans==4.0.0-rc1
+from deep_translator import GoogleTranslator  # pip install deep-translator
 
 # === 設定 ===
 BOT_TOKEN = "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"
@@ -14,13 +14,10 @@ app = Flask(__name__)
 sent_econ_events = set()  # 已推播經濟事件
 sent_titles = set()       # /today 去重新聞
 
-translator = Translator()
-
 # === 翻譯英文到中文 ===
 def translate_to_chinese(text):
     try:
-        result = translator.translate(text, dest='zh-tw')
-        return result.text
+        return GoogleTranslator(source='auto', target='zh-TW').translate(text)
     except Exception as e:
         print(f"❌ 翻譯失敗: {e}")
         return text
@@ -46,11 +43,10 @@ def fetch_econ_events():
         for entry in feed.entries[:10]:
             if entry.title not in sent_econ_events:
                 sent_econ_events.add(entry.title)
-                short_link = entry.link.replace("https://", "").replace("http://", "")
-                title_cn = translate_to_chinese(entry.title)  # 翻成中文
+                title_cn = translate_to_chinese(entry.title)
                 events.append({
                     "title": title_cn,
-                    "link": short_link,
+                    "link": entry.link,
                     "time": entry.published
                 })
     except Exception as e:
@@ -62,8 +58,12 @@ def realtime_push_econ():
     while True:
         events = fetch_econ_events()
         for e in events:
-            msg = f"⚡ <b>{e['title']}</b>\n🔗 {e['link']}\n🕒 {e['time']}"
-            send_message(msg)
+            # 用按鈕代替 URL 顯示
+            reply_markup = {
+                "inline_keyboard": [[{"text": "查看新聞", "url": e['link']}]]
+            }
+            msg = f"⚡ <b>{e['title']}</b>\n🕒 {e['time']}"
+            send_message(msg, reply_markup=reply_markup)
             time.sleep(2)
         time.sleep(300)  # 每 5 分鐘抓一次
 
@@ -78,16 +78,12 @@ def webhook():
             if not today_news:
                 send_message("❌ 暫無最新新聞")
             else:
-                msg = "📅 今日重點摘要\n\n"
-                for idx, n in enumerate(today_news[:5]):
-                    if idx == 0:
-                        msg += f"⚡ <b>{n['title']}</b>\n🔗 {n['link']}\n\n"
-                    else:
-                        msg += f"⚡ {n['title']}\n🔗 {n['link']}\n\n"
-                reply_markup = {
-                    "inline_keyboard": [[{"text": "刷新今日摘要", "callback_data": "/today"}]]
-                }
-                send_message(msg, reply_markup=reply_markup)
+                for n in today_news[:5]:
+                    reply_markup = {
+                        "inline_keyboard": [[{"text": "查看新聞", "url": n['link']}]]
+                    }
+                    msg = f"⚡ <b>{n['title']}</b>\n🕒 {n['time']}"
+                    send_message(msg, reply_markup=reply_markup)
         else:
             send_message("📊 輸入 /today 或點擊按鈕可查看今日摘要")
 
@@ -98,16 +94,12 @@ def webhook():
             if not today_news:
                 send_message("❌ 暫無最新新聞")
             else:
-                msg = "📅 今日重點摘要\n\n"
-                for idx, n in enumerate(today_news[:5]):
-                    if idx == 0:
-                        msg += f"⚡ <b>{n['title']}</b>\n🔗 {n['link']}\n\n"
-                    else:
-                        msg += f"⚡ {n['title']}\n🔗 {n['link']}\n\n"
-                reply_markup = {
-                    "inline_keyboard": [[{"text": "刷新今日摘要", "callback_data": "/today"}]]
-                }
-                send_message(msg, reply_markup=reply_markup)
+                for n in today_news[:5]:
+                    reply_markup = {
+                        "inline_keyboard": [[{"text": "查看新聞", "url": n['link']}]]
+                    }
+                    msg = f"⚡ <b>{n['title']}</b>\n🕒 {n['time']}"
+                    send_message(msg, reply_markup=reply_markup)
     return "OK"
 
 @app.route('/')
