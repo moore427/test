@@ -2,6 +2,9 @@ import requests
 from telegram import Bot
 import os
 import json
+from flask import Flask
+import threading
+import time
 
 # ---------- 配置 ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g")
@@ -9,8 +12,9 @@ CHAT_ID = int(os.getenv("CHAT_ID", 1094674922))
 CACHE_FILE = "sent_news.json"
 
 bot = Bot(token=BOT_TOKEN)
+app = Flask(__name__)
 
-# ---------- 讀取已推播新聞 ----------
+# ---------- 讀取/保存已推播新聞 ----------
 def load_cache():
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
@@ -33,10 +37,10 @@ def fetch_news():
             importance = item.get("importance", "")
             if importance.lower() in ["medium", "high"]:
                 title = item.get("title", "")
-                time = item.get("time", "")
+                time_str = item.get("time", "")
                 category = item.get("category", "未分類")
                 link = "https://rili.jin10.com"
-                news_list.append(f"[{category}] {time} {title}\n{link}")
+                news_list.append(f"[{category}] {time_str} {title}\n{link}")
     return news_list
 
 # ---------- 發送 Telegram ----------
@@ -53,8 +57,27 @@ def send_news(news_list):
     if new_items:
         save_cache(cache)
 
-# ---------- 主程式 ----------
+# ---------- 背景抓新聞任務 ----------
+def background_job():
+    while True:
+        try:
+            news_list = fetch_news()
+            if news_list:
+                send_news(news_list)
+        except Exception as e:
+            print("抓新聞出錯:", e)
+        time.sleep(300)  # 每 5 分鐘抓一次
+
+# ---------- Flask 路由 ----------
+@app.route("/")
+def index():
+    return "BOT is running ✅"
+
+@app.route("/health")
+def health():
+    return "OK"
+
+# ---------- 啟動程式 ----------
 if __name__ == "__main__":
-    news_list = fetch_news()
-    if news_list:
-        send_news(news_list)
+    threading.Thread(target=background_job, daemon=True).start()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
