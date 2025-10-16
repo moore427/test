@@ -4,6 +4,7 @@ import schedule
 import threading
 import time
 from flask import Flask
+import yfinance as yf
 
 # ===== 填入你的資料 =====
 NEWS_API_KEY = "c8c11650703e417b9336b98c2e8083c0"
@@ -16,7 +17,6 @@ DR_STOCKS = {
     "鴻海 DR": "2317.TW"
 }
 
-# ===== requests headers =====
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 # ===== 抓台股加權指數 =====
@@ -34,24 +34,26 @@ def get_tw_stock_index():
                     percent = row[3]
                     return f"📈 台股加權指數: {index_price} ({change}, {percent})"
         return "❌ 無法取得台股加權指數"
-    except Exception as e:
-        return f"❌ 無法取得台股加權指數 ({e})"
+    except:
+        return "❌ 無法取得台股加權指數"
 
-# ===== 抓 DR 股票行情 =====
+# ===== 抓 DR 股票行情（使用 yfinance） =====
 def get_dr_stocks():
     messages = []
     for name, symbol in DR_STOCKS.items():
         try:
-            url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
-            r = requests.get(url, headers=HEADERS, verify=False)
-            data = r.json()
-            quote = data["quoteResponse"]["result"][0]
-            price = quote.get("regularMarketPrice", "N/A")
-            change = quote.get("regularMarketChange", "N/A")
-            percent = quote.get("regularMarketChangePercent", "N/A")
-            messages.append(f"{name}: {price} ({change}, {percent}%)")
-        except Exception as e:
-            messages.append(f"{name}: ❌ 無法取得資料 ({e})")
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period="1d")
+            if hist.empty:
+                messages.append(f"{name}: ❌ 無法取得資料")
+                continue
+            price = hist['Close'][-1]
+            open_price = hist['Open'][-1]
+            change = price - open_price
+            percent = (change / open_price) * 100
+            messages.append(f"{name}: {price:.2f} ({change:.2f}, {percent:.2f}%)")
+        except:
+            messages.append(f"{name}: ❌ 無法取得資料")
     return "\n".join(messages)
 
 # ===== 最新財經新聞 =====
@@ -64,8 +66,8 @@ def get_finance_news():
             return "❌ 無法取得新聞或新聞數量為0"
         headlines = [f"📰 {a['title']} ({a['source']['name']})" for a in articles[:5]]
         return "\n".join(headlines)
-    except Exception as e:
-        return f"❌ 無法取得新聞 ({e})"
+    except:
+        return "❌ 無法取得新聞"
 
 # ===== 熱門漲跌股 =====
 def get_top_stocks():
@@ -74,8 +76,7 @@ def get_top_stocks():
         url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date={date_str}&type=ALL"
         r = requests.get(url, headers=HEADERS, verify=False)
         data = r.json()
-        top_gainers = []
-        top_losers = []
+        top_gainers, top_losers = [], []
 
         if "data9" in data:
             for row in data["data9"][:5]:
@@ -86,7 +87,7 @@ def get_top_stocks():
 
         msg = "📈 漲幅前5名:\n" + "\n".join(top_gainers) + "\n\n"
         msg += "📉 跌幅前5名:\n" + "\n".join(top_losers)
-        return msg
+        return msg if top_gainers or top_losers else "❌ 無法取得熱門股票排行"
     except:
         return "❌ 無法取得熱門股票排行"
 
@@ -97,8 +98,7 @@ def get_margin_trading():
         url = f"https://www.twse.com.tw/exchangeReport/MI_MARGN?response=json&date={date_str}&selectType=ALL"
         r = requests.get(url, headers=HEADERS, verify=False)
         data = r.json()
-        top_finance = []
-        top_short = []
+        top_finance, top_short = [], []
 
         if "data" in data:
             for row in data["data"][:5]:
@@ -107,7 +107,7 @@ def get_margin_trading():
 
         msg = "💰 融資買進前5名:\n" + "\n".join(top_finance) + "\n\n"
         msg += "📉 融券賣出前5名:\n" + "\n".join(top_short)
-        return msg
+        return msg if top_finance or top_short else "❌ 無法取得融資餘額"
     except:
         return "❌ 無法取得融資餘額"
 
@@ -138,7 +138,7 @@ def job():
 
 # ===== 排程每天 8 點 =====
 def run_schedule():
-    schedule.every().day.at("08:00").do(job)
+    schedule.every().minute.at(":01").do(job)
     while True:
         schedule.run_pending()
         time.sleep(30)
