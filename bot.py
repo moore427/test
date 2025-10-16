@@ -1,112 +1,71 @@
 import requests
-import time
+from telegram import Bot
 import os
-import feedparser
-from flask import Flask, request
-from threading import Thread
-from deep_translator import GoogleTranslator  # pip install deep-translator
+import json
+from googletrans import Translator
 
-# === 設定 ===
-BOT_TOKEN = "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"
-CHAT_ID = 1094674922
+# ---------- 配置 ----------
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g")
+CHAT_ID = int(os.getenv("CHAT_ID", 1094674922))
+CACHE_FILE = "sent_news.json"
 
-app = Flask(__name__)
-sent_econ_events = set()  # 已推播經濟事件
-sent_titles = set()       # /today 去重新聞
+bot = Bot(token=BOT_TOKEN)
+translator = Translator()
 
-# === 翻譯英文到中文 ===
-def translate_to_chinese(text):
-    try:
-        return GoogleTranslator(source='auto', target='zh-TW').translate(text)
-    except Exception as e:
-        print(f"❌ 翻譯失敗: {e}")
-        return text
+# ---------- 讀取已推播新聞 ----------
+def load_cache():
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    return set()
 
-# === Telegram 發送訊息 ===
-def send_message(text, reply_markup=None):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML"
-    }
-    if reply_markup:
-        data["reply_markup"] = reply_markup
-    requests.post(url, json=data)
+def save_cache(cache):
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(cache), f, ensure_ascii=False)
 
-# === 抓取即時經濟事件（Investing.com RSS）===
-def fetch_econ_events():
-    rss_url = "https://www.investing.com/rss/news.rss"
-    events = []
-    try:
-        feed = feedparser.parse(rss_url)
-        for entry in feed.entries[:10]:
-            if entry.title not in sent_econ_events:
-                sent_econ_events.add(entry.title)
-                title_cn = translate_to_chinese(entry.title)
-                events.append({
-                    "title": title_cn,
-                    "link": entry.link,
-                    "time": entry.published
-                })
-    except Exception as e:
-        print(f"❌ 經濟事件抓取錯誤: {e}")
-    return events
+# ---------- 抓取金十免費 JSON API ----------
+def fetch_news():
+    url = "https://cdn.jin10.com/datatool/market_calendar.json"  # 免費 API
+    response = requests.get(url)
+    news_list = []
 
-# === 即時推播經濟事件 ===
-def realtime_push_econ():
-    while True:
-        events = fetch_econ_events()
-        for e in events:
-            # 用按鈕代替 URL 顯示
-            reply_markup = {
-                "inline_keyboard": [[{"text": "查看新聞", "url": e['link']}]]
-            }
-            msg = f"⚡ <b>{e['title']}</b>\n🕒 {e['time']}"
-            send_message(msg, reply_markup=reply_markup)
-            time.sleep(2)
-        time.sleep(300)  # 每 5 分鐘抓一次
+    if response.status_code == 200:
+        data = response.json()
+        for item in data[:20]:  # 取最新 20 則
+            importance = item.get("importance", "")
+            if importance.lower() in ["medium", "high"]:
+                title = item.get("title", "")
+                time = item.get("time", "")
+                category = item.get("category", "未分類")
+                link = "https://rili.jin10.com"
+                news_list.append(f"[{category}] {time} {title}\n{link}")
+    return news_list
 
-# === /today 指令 + 按鈕功能 ===
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    if "message" in data and "text" in data["message"]:
-        text = data["message"]["text"]
-        if text == "/today":
-            today_news = fetch_econ_events()
-            if not today_news:
-                send_message("❌ 暫無最新新聞")
-            else:
-                for n in today_news[:5]:
-                    reply_markup = {
-                        "inline_keyboard": [[{"text": "查看新聞", "url": n['link']}]]
-                    }
-                    msg = f"⚡ <b>{n['title']}</b>\n🕒 {n['time']}"
-                    send_message(msg, reply_markup=reply_markup)
-        else:
-            send_message("📊 輸入 /today 或點擊按鈕可查看今日摘要")
+# ---------- 英文自動翻譯中文 ----------
+def translate_news(news_list):
+    translated = []
+    for news in news_list:
+        zh = translator.translate(news, src='en', dest='zh-cn').text
+        translated.append(zh)
+    return translated
 
-    if "callback_query" in data:
-        callback = data["callback_query"]
-        if callback["data"] == "/today":
-            today_news = fetch_econ_events()
-            if not today_news:
-                send_message("❌ 暫無最新新聞")
-            else:
-                for n in today_news[:5]:
-                    reply_markup = {
-                        "inline_keyboard": [[{"text": "查看新聞", "url": n['link']}]]
-                    }
-                    msg = f"⚡ <b>{n['title']}</b>\n🕒 {n['time']}"
-                    send_message(msg, reply_markup=reply_markup)
-    return "OK"
+# ---------- 發送 Telegram ----------
+def send_news(news_list):
+    cache = load_cache()
+    new_items = []
 
-@app.route('/')
-def home():
-    return "✅ Finance News Bot Running!"
+    for news in news_list:
+        if news not in cache:
+            bot.send_message(chat_id=CHAT_ID, text=news)
+            cache.add(news)
+            new_items.append(news)
+    
+    if new_items:
+        save_cache(cache)
 
-# === 啟動程式 ===
-if __name__ == '__main__':
-    Thread(target=realtime_push_econ).start()
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
+# ---------- 主程式 ----------
+if __name__ == "__main__":
+    news_list = fetch_news()
+    if news_list:
+        news_list_zh = translate_news(news_list)
+        send_news(news_list_zh)
