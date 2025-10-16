@@ -1,12 +1,11 @@
 import feedparser
 import json
+import os
 import time
 import threading
-import os
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from flask import Flask, request
-from googletrans import Translator  # pip install googletrans==4.0.0rc1
+from googletrans import Translator
 
 # ---------- 配置 ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "你的BOT_TOKEN")
@@ -14,9 +13,8 @@ CHAT_ID = int(os.getenv("CHAT_ID", 123456789))
 CACHE_FILE = "sent_news.json"
 RSS_URL = "https://www.investing.com/rss/news_25.rss"  # 全球經濟新聞RSS
 
-bot = Bot(token=BOT_TOKEN)
-app = Flask(__name__)
 translator = Translator()
+bot = Bot(token=BOT_TOKEN)
 
 # ---------- 讀取/保存已推播新聞 ----------
 def load_cache():
@@ -29,7 +27,7 @@ def save_cache(cache):
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump(list(cache), f, ensure_ascii=False)
 
-# ---------- 抓 RSS 最新新聞 + 翻譯 ----------
+# ---------- 抓 RSS + 翻譯 ----------
 def fetch_news(limit=5):
     news_list = []
     feed = feedparser.parse(RSS_URL)
@@ -37,7 +35,6 @@ def fetch_news(limit=5):
         title = entry.get("title")
         link = entry.get("link")
         summary = entry.get("summary", "")
-        # 翻譯成中文
         try:
             title_cn = translator.translate(title, dest="zh-tw").text
             summary_cn = translator.translate(summary, dest="zh-tw").text
@@ -55,57 +52,4 @@ def send_news(news_list):
         if news not in cache:
             bot.send_message(chat_id=CHAT_ID, text=news)
             cache.add(news)
-            new_items.append(news)
-    if new_items:
-        save_cache(cache)
-
-# ---------- Telegram 指令 ----------
-async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    news_list = fetch_news(limit=5)
-    if news_list:
-        for news in news_list:
-            await update.message.reply_text(news)
-    else:
-        await update.message.reply_text("目前沒有最新新聞。")
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "歡迎使用免費經濟新聞 BOT！\n指令:\n/today - 更新最新5筆新聞（自動翻譯中文）"
-    await update.message.reply_text(text)
-
-# ---------- 建立 Application ----------
-application = ApplicationBuilder().token(BOT_TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("today", today))
-
-# ---------- Webhook 路由 ----------
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    import asyncio
-    update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.create_task(application.update_queue.put(update))
-    return "OK"
-
-# ---------- 健康檢查 ----------
-@app.route("/health")
-def health():
-    return "OK"
-
-@app.route("/")
-def index():
-    return "BOT is running ✅"
-
-# ---------- 背景抓新聞任務 ----------
-def background_job():
-    while True:
-        try:
-            news_list = fetch_news(limit=5)
-            if news_list:
-                send_news(news_list)
-        except Exception as e:
-            print("抓新聞出錯:", e)
-        time.sleep(300)  # 每5分鐘抓一次
-
-# ---------- 啟動 Flask Web Service ----------
-if __name__ == "__main__":
-    threading.Thread(target=background_job, daemon=True).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+            new
