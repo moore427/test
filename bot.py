@@ -6,7 +6,7 @@ import time
 from flask import Flask
 
 # ===== 填入你的資料 =====
-BOT_TOKEN = "fiancenews_bot"       # 從 @BotFather 拿
+BOT_TOKEN = "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g"  # 從 @BotFather 拿
 CHAT_ID = "736743966"         # 你的 Telegram Chat ID
 NEWS_API_KEY = "你的NewsAPI金鑰"
 
