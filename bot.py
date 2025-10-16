@@ -1,20 +1,22 @@
-import requests
-from bs4 import BeautifulSoup
-import os
+import feedparser
 import json
-import threading
 import time
-from flask import Flask, request
+import threading
+import os
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from flask import Flask, request
+from googletrans import Translator  # pip install googletrans==4.0.0rc1
 
 # ---------- 配置 ----------
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g")
-CHAT_ID = int(os.getenv("CHAT_ID", 1094674922))
+BOT_TOKEN = os.getenv("BOT_TOKEN", "你的BOT_TOKEN")
+CHAT_ID = int(os.getenv("CHAT_ID", 123456789))
 CACHE_FILE = "sent_news.json"
+RSS_URL = "https://www.investing.com/rss/news_25.rss"  # 全球經濟新聞RSS
 
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
+translator = Translator()
 
 # ---------- 讀取/保存已推播新聞 ----------
 def load_cache():
@@ -27,28 +29,22 @@ def save_cache(cache):
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump(list(cache), f, ensure_ascii=False)
 
-# ---------- 爬取免費經濟新聞 ----------
-def fetch_news(free_only=True):
+# ---------- 抓 RSS 最新新聞 + 翻譯 ----------
+def fetch_news(limit=5):
     news_list = []
-    try:
-        # 使用公開免費網站爬蟲，示例抓經濟日曆事件
-        url = "https://rili.jin10.com/"  # 金十公開頁面
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, "html.parser")
-            # 假設每條新聞在 <li class="event-item"> 裡面
-            items = soup.select("li.event-item")
-            for item in items[:20]:
-                category = item.select_one(".event-category").text.strip() if item.select_one(".event-category") else "未分類"
-                time_str = item.select_one(".event-time").text.strip() if item.select_one(".event-time") else ""
-                title = item.select_one(".event-title").text.strip() if item.select_one(".event-title") else ""
-                link = "https://rili.jin10.com"
-                news_list.append(f"[{category}] {time_str} {title}\n{link}")
-    except Exception as e:
-        print("爬新聞失敗:", e)
+    feed = feedparser.parse(RSS_URL)
+    for entry in feed.entries[:limit]:
+        title = entry.get("title")
+        link = entry.get("link")
+        summary = entry.get("summary", "")
+        # 翻譯成中文
+        try:
+            title_cn = translator.translate(title, dest="zh-tw").text
+            summary_cn = translator.translate(summary, dest="zh-tw").text
+        except Exception:
+            title_cn = title
+            summary_cn = summary
+        news_list.append(f"{title_cn}\n{summary_cn}\n{link}")
     return news_list
 
 # ---------- 發送 Telegram ----------
@@ -64,46 +60,29 @@ def send_news(news_list):
         save_cache(cache)
 
 # ---------- Telegram 指令 ----------
-async def all_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    news_list = fetch_news(free_only=False)
+async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    news_list = fetch_news(limit=5)
     if news_list:
         for news in news_list:
             await update.message.reply_text(news)
     else:
-        await update.message.reply_text("目前沒有新新聞。")
-
-async def free_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    news_list = fetch_news(free_only=True)
-    if news_list:
-        for news in news_list:
-            await update.message.reply_text(news)
-    else:
-        await update.message.reply_text("目前沒有免費新聞。")
-
-async def summary_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    news_list = fetch_news(free_only=True)
-    if news_list:
-        summary = "\n".join(news_list[:5])
-        await update.message.reply_text(summary)
-    else:
-        await update.message.reply_text("目前沒有摘要新聞。")
+        await update.message.reply_text("目前沒有最新新聞。")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "歡迎使用金十模擬 BOT！指令:\n/all - 全部新聞\n/free - 免費新聞\n/summary - 摘要新聞"
+    text = "歡迎使用免費經濟新聞 BOT！\n指令:\n/today - 更新最新5筆新聞（自動翻譯中文）"
     await update.message.reply_text(text)
 
 # ---------- 建立 Application ----------
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("all", all_news))
-application.add_handler(CommandHandler("free", free_news))
-application.add_handler(CommandHandler("summary", summary_news))
+application.add_handler(CommandHandler("today", today))
 
 # ---------- Webhook 路由 ----------
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
+    import asyncio
     update = Update.de_json(request.get_json(force=True), bot)
-    application.update_queue.put(update)
+    asyncio.create_task(application.update_queue.put(update))
     return "OK"
 
 # ---------- 健康檢查 ----------
@@ -119,7 +98,7 @@ def index():
 def background_job():
     while True:
         try:
-            news_list = fetch_news(free_only=True)
+            news_list = fetch_news(limit=5)
             if news_list:
                 send_news(news_list)
         except Exception as e:
