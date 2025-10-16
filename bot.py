@@ -82,3 +82,13 @@ schedule.every().day.at("08:00").do(job)
 while True:
     schedule.run_pending()
     time.sleep(30)
+
+# ===== Flask Web Server =====
+@app.route("/")
+def index():
+    return "Telegram Finance Bot is running!"
+
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port
