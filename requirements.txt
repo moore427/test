@@ -2,8 +2,8 @@ python-telegram-bot[job-queue,webhooks]==20.3
 feedparser==6.0.10
 requests==2.31.0
 deep-translator==1.11.4
-aiohttp==3.9.5
-yarl==1.9.2
-multidict==6.0.4
+aiohttp>=3.10.5
+yarl>=1.15.0
+multidict>=6.1.0
 async-timeout==4.0.3
 certifi>=2024.7.4
