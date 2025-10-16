@@ -95,19 +95,20 @@ def get_all_news():
     return new_items
 
 
-# === 即時推播（有新新聞就立刻發） ===
+# === 即時推播（分類 + 標題加粗 + 簡短連結）===
 def realtime_push():
     while True:
         news = get_all_news()
         if news:
             for n in news:
-                msg = f"{n['category']} <b>{n['title']}</b>\n來源：{n['source']}\n🔗 {n['link']}"
+                short_link = n['link'].replace("https://", "").replace("http://", "")
+                msg = f"{n['category']} <b>{n['title']}</b>\n🔗 {short_link}"
                 send_message(msg)
                 time.sleep(2)
         time.sleep(30)  # 每 30 秒檢查一次新新聞
 
 
-# === /today 指令 ===
+# === /today 指令（每日重點摘要，首則新聞加粗）===
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -119,8 +120,12 @@ def webhook():
                 send_message("❌ 暫無最新新聞")
             else:
                 msg = "📅 今日重點摘要\n\n"
-                for n in today_news[:5]:
-                    msg += f"{n['category']} {n['title']}\n來源：{n['source']}\n🔗 {n['link']}\n\n"
+                for idx, n in enumerate(today_news[:5]):
+                    short_link = n['link'].replace("https://", "").replace("http://", "")
+                    if idx == 0:
+                        msg += f"{n['category']} <b>{n['title']}</b>\n🔗 {short_link}\n\n"
+                    else:
+                        msg += f"{n['category']} {n['title']}\n🔗 {short_link}\n\n"
                 send_message(msg)
         else:
             send_message("📊 輸入 /today 可查看今日摘要")
