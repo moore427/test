@@ -1,9 +1,11 @@
 import requests
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler
 import os
 import json
+import threading
+import time
 from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Dispatcher
 
 # ---------- 配置 ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g")
@@ -12,9 +14,6 @@ CACHE_FILE = "sent_news.json"
 
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
-
-# ---------- Dispatcher 處理 Webhook 更新 ----------
-dispatcher = Dispatcher(bot=bot, update_queue=None, workers=0, use_context=True)
 
 # ---------- 讀取/保存已推播新聞 ----------
 def load_cache():
@@ -32,7 +31,6 @@ def fetch_news():
     url = "https://cdn.jin10.com/datatool/market_calendar.json"
     response = requests.get(url)
     news_list = []
-
     if response.status_code == 200:
         data = response.json()
         for item in data[:20]:
@@ -49,21 +47,23 @@ def fetch_news():
 def send_news(news_list):
     cache = load_cache()
     new_items = []
-
     for news in news_list:
         if news not in cache:
             bot.send_message(chat_id=CHAT_ID, text=news)
             cache.add(news)
             new_items.append(news)
-    
     if new_items:
         save_cache(cache)
 
-# ---------- Telegram /webhook 路由 ----------
+# ---------- Telegram 指令 ----------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Bot is running ✅")
+
+# ---------- Webhook 路由 ----------
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
+    app.application.update_queue.put(update)
     return "OK"
 
 # ---------- /health 路由 ----------
@@ -71,15 +71,8 @@ def webhook():
 def health():
     return "OK"
 
-# ---------- 指令範例 ----------
-def start(update, context):
-    update.message.reply_text("Bot is running ✅")
-
-dispatcher.add_handler(CommandHandler("start", start))
-
 # ---------- 背景抓新聞任務 ----------
 def background_job():
-    import time
     while True:
         try:
             news_list = fetch_news()
@@ -91,7 +84,9 @@ def background_job():
 
 # ---------- 啟動程式 ----------
 if __name__ == "__main__":
-    import threading
+    # 建立 Application（新版 API）
+    app.application = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.application.add_handler(CommandHandler("start", start))
     threading.Thread(target=background_job, daemon=True).start()
-    # Flask 服務
+    # 啟動 Flask Web Service
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
