@@ -1,10 +1,9 @@
 import requests
-from telegram import Bot
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler
 import os
 import json
-from flask import Flask
-import threading
-import time
+from flask import Flask, request
 
 # ---------- 配置 ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8430406960:AAHP4EahpoxGeAsLZNDUdvH7RBTSYt4mT8g")
@@ -13,6 +12,9 @@ CACHE_FILE = "sent_news.json"
 
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
+
+# ---------- Dispatcher 處理 Webhook 更新 ----------
+dispatcher = Dispatcher(bot=bot, update_queue=None, workers=0, use_context=True)
 
 # ---------- 讀取/保存已推播新聞 ----------
 def load_cache():
@@ -57,8 +59,27 @@ def send_news(news_list):
     if new_items:
         save_cache(cache)
 
+# ---------- Telegram /webhook 路由 ----------
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "OK"
+
+# ---------- /health 路由 ----------
+@app.route("/health")
+def health():
+    return "OK"
+
+# ---------- 指令範例 ----------
+def start(update, context):
+    update.message.reply_text("Bot is running ✅")
+
+dispatcher.add_handler(CommandHandler("start", start))
+
 # ---------- 背景抓新聞任務 ----------
 def background_job():
+    import time
     while True:
         try:
             news_list = fetch_news()
@@ -68,16 +89,9 @@ def background_job():
             print("抓新聞出錯:", e)
         time.sleep(300)  # 每 5 分鐘抓一次
 
-# ---------- Flask 路由 ----------
-@app.route("/")
-def index():
-    return "BOT is running ✅"
-
-@app.route("/health")
-def health():
-    return "OK"
-
 # ---------- 啟動程式 ----------
 if __name__ == "__main__":
+    import threading
     threading.Thread(target=background_job, daemon=True).start()
+    # Flask 服務
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
