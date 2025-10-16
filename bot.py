@@ -69,6 +69,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- 建立 Application ----------
 application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+# 指令
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("today", today))
 
@@ -78,9 +80,8 @@ async def background_job(context: ContextTypes.DEFAULT_TYPE):
     if news_list:
         send_news(news_list)
 
-# ---------- 設置 JobQueue ----------
-job_queue = application.job_queue
-job_queue.run_repeating(background_job, interval=300, first=10)
+# 設置 JobQueue (PTB 20+ 標準方式)
+application.job_queue.run_repeating(background_job, interval=300, first=10)
 
 # ---------- 啟動 BOT Webhook ----------
 if __name__ == "__main__":
