@@ -1,7 +1,9 @@
 import requests
 from datetime import datetime
 import schedule
+import threading
 import time
+from flask import Flask
 
 # ===== 填入你的資料 =====
 BOT_TOKEN = "fiancenews_bot"       # 從 @BotFather 拿
@@ -16,7 +18,6 @@ DR_STOCKS = {
 
 # ===== 函式定義 =====
 def get_tw_stock_index():
-    """抓台股加權指數（示範抓 Yahoo Finance API）"""
     try:
         url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=^TWII"
         data = requests.get(url).json()
@@ -29,7 +30,6 @@ def get_tw_stock_index():
         return "❌ 無法取得台股加權指數"
 
 def get_dr_stocks():
-    """抓 DR 股票行情（示範抓 Yahoo Finance API）"""
     messages = []
     for name, symbol in DR_STOCKS.items():
         try:
@@ -45,18 +45,16 @@ def get_dr_stocks():
     return "\n".join(messages)
 
 def get_finance_news():
-    """取得最新台灣股市新聞（前5則）"""
     try:
         url = f"https://newsapi.org/v2/top-headlines?country=tw&category=business&apiKey={NEWS_API_KEY}"
         response = requests.get(url)
         articles = response.json().get("articles", [])
-        headlines = [f"📰 {article['title']} ({article['source']['name']})" for article in articles[:5]]
+        headlines = [f"📰 {a['title']} ({a['source']['name']})" for a in articles[:5]]
         return "\n".join(headlines)
     except:
         return "❌ 無法取得新聞"
 
 def send_to_telegram(msg):
-    """發送訊息到 Telegram"""
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         data = {"chat_id": CHAT_ID, "text": msg}
@@ -65,25 +63,26 @@ def send_to_telegram(msg):
         print(f"發送 Telegram 訊息錯誤: {e}")
 
 def job():
-    """每天推播任務"""
     index_msg = get_tw_stock_index()
     dr_msg = get_dr_stocks()
     news_msg = get_finance_news()
-
     message = f"📅 今日台股摘要 ({datetime.now().strftime('%Y/%m/%d')})\n\n"
     message += f"{index_msg}\n\n{dr_msg}\n\n最新財經新聞:\n{news_msg}"
     send_to_telegram(message)
     print(f"[{datetime.now()}] 已發送台股 + DR + 財經新聞摘要")
 
 # ===== 排程每天 8 點 =====
-schedule.every().day.at("08:00").do(job)
+def run_schedule():
+    schedule.every().day.at("08:00").do(job)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
 
-# ===== Background Worker 主迴圈 =====
-while True:
-    schedule.run_pending()
-    time.sleep(30)
+threading.Thread(target=run_schedule).start()
 
 # ===== Flask Web Server =====
+app = Flask(__name__)
+
 @app.route("/")
 def index():
     return "Telegram Finance Bot is running!"
@@ -91,4 +90,4 @@ def index():
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port
+    app.run(host="0.0.0.0", port=port)
