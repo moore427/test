@@ -1,6 +1,4 @@
-requests
-schedule
-flask
-yfinance
-feedparser
-googletrans
+Flask==2.3.3
+requests==2.31.0
+feedparser==6.1.1
+deep-translator==1.11.1
